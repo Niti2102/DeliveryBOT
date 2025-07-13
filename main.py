@@ -1,42 +1,31 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import Response, PlainTextResponse
+from fastapi.responses import PlainTextResponse, Response
 from twilio.twiml.voice_response import VoiceResponse
-from orders import get_order_by_phone
-from responder import generate_response
-import pandas as pd
+import httpx
 
 app = FastAPI()
 
-# Session tracker for WhatsApp chatbot
+# Track user sessions
 user_sessions = {}
 
-# Voice Call Handler
+# Actual MockAPI orders endpoint
+MOCKAPI_URL = "https://68734c03c75558e27353cdfa.mockapi.io/orders"
+
 @app.post("/voice")
 async def voice_handler(request: Request):
     form = await request.form()
     from_number = form.get("From", "").replace("whatsapp:", "").strip()
 
-    # Step 1: Get order from phone number
-    order = get_order_by_phone(from_number)
-
-    # Step 2: Generate a nice response
-    message = generate_response(order)
-
-    # Step 3: Tell Twilio to speak it
     twilio_response = VoiceResponse()
-    twilio_response.say(message)
-
+    twilio_response.say("Voice support not available yet. Please use WhatsApp.")
     return Response(content=str(twilio_response), media_type="application/xml")
 
-
-# WhatsApp Chatbot Handler
 @app.post("/whatsapp")
 async def whatsapp_handler(request: Request):
     form = await request.form()
     from_number = form.get("From", "").replace("whatsapp:", "").strip()
     body = form.get("Body", "").strip().lower()
 
-    # Get current state of the user
     state = user_sessions.get(from_number, "start")
 
     if state == "start":
@@ -45,24 +34,30 @@ async def whatsapp_handler(request: Request):
         return PlainTextResponse(f"<Response><Message>{reply}</Message></Response>", media_type="application/xml")
 
     elif state == "awaiting_phone":
-        phone_input = body.replace(" ", "")
-        df = pd.read_csv("data/orders.csv", dtype={"phone_number": str})
+        phone_input = body.replace(" ", "").lower()
 
-        # Try to find order
-        order = df[df["phone_number"].str.replace(" ", "") == phone_input]
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(MOCKAPI_URL)
+                orders = response.json()
 
-        if not order.empty:
-            row = order.iloc[0]
-            user_sessions[from_number] = "done"
-            reply = (
-                f"✅ Your order **{row['order_id']}** is **{row['status']}**, "
-                f"and will arrive at **{row['address']}** by **{row['eta']}**."
-            )
-        else:
-            reply = (
-                "❌ Sorry, we couldn't find any order for that number. "
-                "Please check and enter a valid phone number."
-            )
+            matched_order = next((order for order in orders if order.get("phone", "").replace(" ", "").lower() == phone_input), None)
+
+            if matched_order:
+                reply = (
+                    f"✅ Your order **#{matched_order['id']}** is on the way!\n"
+                    f"📦 ETA: **{matched_order['eta']}**\n"
+                    f"📍 Address: **{matched_order['address']}**"
+                )
+                user_sessions[from_number] = "done"
+            else:
+                reply = (
+                    "❌ Sorry, we couldn't find any order for that number.\n"
+                    "Please make sure it's correct and try again."
+                )
+
+        except Exception as e:
+            reply = f"⚠️ Oops! Something went wrong: {str(e)}"
 
         return PlainTextResponse(f"<Response><Message>{reply}</Message></Response>", media_type="application/xml")
 
