@@ -48,8 +48,6 @@ async def whatsapp_handler(request: Request):
         phone_input = body.replace(" ", "")
         df = pd.read_csv("data/orders.csv", dtype={"phone_number": str})
 
-
-
         # Try to find order
         order = df[df["phone_number"].str.replace(" ", "") == phone_input]
 
@@ -57,8 +55,8 @@ async def whatsapp_handler(request: Request):
             row = order.iloc[0]
             user_sessions[from_number] = "done"
             reply = (
-                f"✅ Your order **{row['order_id']}** is **{row['order_status']}**, "
-                f"and will arrive at **{row['location']}** by **{row['eta']}**."
+                f"✅ Your order **{row['order_id']}** is **{row['status']}**, "
+                f"and will arrive at **{row['address']}** by **{row['eta']}**."
             )
         else:
             reply = (
