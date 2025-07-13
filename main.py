@@ -46,7 +46,8 @@ async def whatsapp_handler(request: Request):
 
     elif state == "awaiting_phone":
         phone_input = body.replace(" ", "")
-        df = pd.read_csv("data/orders.csv")
+        df = pd.read_csv("data/orders.csv", dtype={"phone_number": str})
+
 
 
         # Try to find order
